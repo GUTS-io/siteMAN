@@ -9,7 +9,17 @@
     .container{background:#fff;padding:30px;border-radius:12px;box-shadow:0 6px 15px rgba(0,0,0,.1);max-width:900px;width:100%}
     h1{color:#007bff;text-align:center;margin-bottom:25px;border-bottom:2px solid #007bff;padding-bottom:10px}
     .upload-section{background:#e7f3ff;padding:20px;border-radius:8px;margin-bottom:20px;border:2px dashed #007bff}
-    .upload-btn{background:#007bff;color:#fff;border:none;padding:10px 20px;border-radius:6px cursor:pointer;font-size:1em;margin-right:10px;transition:background-color .3s}
+    .upload-btn{
+      background:#007bff;
+      color:#fff;
+      border:none;
+      padding:10px 20px;
+      border-radius:6px;
+      cursor:pointer;
+      font-size:1em;
+      margin-right:10px;
+      transition:background-color .3s;
+    }
     .upload-btn:hover{background:#0056b3}
     .file-name{margin-left:10px;font-style:italic}
     .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -33,6 +43,7 @@
     .note{font-size:.9em;color:#777;margin-top:20px;text-align:center}
     .range-text{font-size:.8em;color:#777}
     .hidden{display:none}
+    .file-header {grid-column: 1 / -1; border-bottom: 2px solid #ddd; margin-top: 20px; padding-bottom: 5px; color: #555; font-weight: bold;}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
 </head>
@@ -131,9 +142,13 @@
       })
     }
 
-    function renderMetrics(obj) {
+    function renderMetrics(obj, title = null) {
       const out = $("metrics-output")
-      out.innerHTML = ""
+      
+      if (title) {
+        out.innerHTML += `<div class="file-header">${title}</div>`
+      }
+
       for (const key of Object.keys(BASELINE_DATA)) {
         const base = BASELINE_DATA[key]
         const current = obj[key]
@@ -247,11 +262,24 @@
       trainFiles = Array.from(e.target.files || [])
       $("train-name").textContent = trainFiles.length ? `Навчальні файли: ${trainFiles.length} шт.` : "Навчальні файли: не обрано"
       if (trainFiles.length === 0) return
-      const objs = []
-      for (const f of trainFiles) {
-        try { objs.push(await readJsonFile(f)) } catch { }
+
+      const promises = trainFiles.map(f => readJsonFile(f).catch(err => null))
+      const objs = (await Promise.all(promises)).filter(x => x !== null)
+
+      if (objs.length === 0) {
+        alert("Жоден файл не валідний!")
+        trainSet = null
+        return
       }
-      trainSet = objs.map(toVector)
+
+      trainSet = objs.map(obj => toVector(obj))
+      $("analysis-section").classList.remove("hidden")
+      
+      $("metrics-output").innerHTML = ""
+      
+      objs.forEach((obj, index) => {
+        renderMetrics(obj, `Файл №${index + 1} (${trainFiles[index].name})`)
+      })
     })
 
     $("infer-input").addEventListener("change", async (e) => {
@@ -261,7 +289,10 @@
       try {
         const obj = await readJsonFile(inferFile)
         $("analysis-section").classList.remove("hidden")
-        renderMetrics(obj)
+        
+        $("metrics-output").innerHTML = ""
+        renderMetrics(obj, "Поточний замір")
+        
         $("prognosis-text").textContent = "Після навчання натисни «Прогноз (поточний замір)»."
       } catch {
         $("analysis-section").classList.add("hidden")
